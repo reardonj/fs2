@@ -296,17 +296,14 @@ class ParEvalMapSuite extends Fs2Suite {
 
   group("issue-3076, parEvalMap* runs resource finaliser before usage") {
     test("parEvalMap") {
-      Deferred[IO, Unit]
-        .flatMap { d =>
-          Stream
-            .bracket(IO.unit)(_ => d.complete(()).void)
-            .parEvalMap(2)(_ => IO.sleep(1.second))
-            .evalMap(_ => IO.sleep(1.second) >> d.complete(()))
-            .timeout(5.seconds)
-            .compile
-            .last
-        }
-        .assertEquals(Some(true))
+      Stream(1, 2, 3, 4, 5, 6)
+        .flatMap(i => Stream.bracket(Deferred[IO, Int])(_.complete(i).void))
+        .parEvalMap(2)(d => IO.sleep(1.second) >> d.complete(0))
+        .evalMap(completed => IO.raiseWhen(!completed)(new RuntimeException("already completed")))
+        .timeout(5.seconds)
+        .compile
+        .last
+        .assertEquals(Some(()))
     }
 
     test("broadcastThrough") {
